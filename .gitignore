@@ -72,3 +72,8 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
+
+
+# Mermaid and images
+*.mmd
+*.png
