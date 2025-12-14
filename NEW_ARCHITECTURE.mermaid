@@ -1,0 +1,54 @@
+graph TD
+    User((User))
+    ADK_UI[ADK Web UI]
+    Manager[Manager Agent - Root Orchestrator]
+    
+    subgraph "Data Retrieval Squad"
+        RedshiftAgent[Redshift Specialist]
+        EmailAgent[Email Specialist]
+    end
+    
+    subgraph "Processing Squad"
+        Organizer[Timeline Organizer - Deterministic Logic]
+        Analyzer[Churn Analyzer - Insight Generator]
+    end
+    
+    %% External Tools via MCP
+    RedshiftMCP[Redshift MCP Server]
+    EmailMCP[Email MCP Server]
+    
+    %% External Services
+    RedshiftDB[(AWS Redshift)]
+    EmailServer[(Email Service)]
+    Bedrock[(AWS Bedrock - Claude 3.5 Sonnet)]
+
+    %% Connections
+    User <--> ADK_UI
+    ADK_UI <--> Manager
+    
+    %% Orchestration Flow
+    Manager -- "1. Get Data" --> RedshiftAgent
+    Manager -- "1. Get Data" --> EmailAgent
+    
+    %% Tool Usage
+    RedshiftAgent -- "MCP Protocol" --> RedshiftMCP
+    RedshiftMCP <--> RedshiftDB
+    
+    EmailAgent -- "MCP Protocol" --> EmailMCP
+    EmailMCP <--> EmailServer
+    
+    %% Data Flow
+    RedshiftAgent -- "Call Logs (JSON)" --> Manager
+    EmailAgent -- "Emails (JSON)" --> Manager
+    
+    Manager -- "2. Sort Data" --> Organizer
+    Organizer -- "Sorted Timeline" --> Manager
+    
+    Manager -- "3. Analyze Risk" --> Analyzer
+    Analyzer -- "Risk Score & Summary" --> Manager
+    
+    %% AI Power
+    Manager -.-> Bedrock
+    RedshiftAgent -.-> Bedrock
+    EmailAgent -.-> Bedrock
+    Analyzer -.-> Bedrock
