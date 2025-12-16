@@ -4,7 +4,6 @@ from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
 from mcp import StdioServerParameters
 from config import settings
 from agents.prompts import CALL_TRANSCRIPTS_AGENT_INSTRUCTION
-from agents.models import CallTranscriptList
 
 # MCP connection to Redshift
 redshift_mcp = McpToolset(
@@ -35,7 +34,6 @@ call_transcripts_agent = Agent(
     model=LiteLlm(model=settings.model_id),
     description="Retrieves call transcripts from Gong database in Redshift",
     instruction=CALL_TRANSCRIPTS_AGENT_INSTRUCTION,
-    tools=[redshift_mcp],
-    output_schema=CallTranscriptList
+    tools=[redshift_mcp]
 )
 
