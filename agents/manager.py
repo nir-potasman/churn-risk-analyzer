@@ -5,7 +5,8 @@ from config import settings
 from agents.prompts import ACCOUNT_MANAGER_INSTRUCTION
 
 # Initialize the model using configuration from settings
-llm_model = LiteLlm(model=settings.bedrock_model_id)
+llm_model = LiteLlm(model=settings.model_id)
+
 
 manager_agent = Agent(
     name="account_manager",

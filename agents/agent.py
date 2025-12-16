@@ -1,7 +1,10 @@
-from .manager import manager_agent
+from google.adk.agents.llm_agent import Agent  # Explicit import
+from agents.manager import manager_agent
+from agents.call_transcripts_agent import call_transcripts_agent
 
-# Alias the manager agent as root_agent so ADK CLI can find it
-root_agent = manager_agent
+# Switch between agents for testing:
+# root_agent = manager_agent  # For testing Manager Agent
+root_agent = call_transcripts_agent   # For testing Call Transcripts Agent
 
 if __name__ == "__main__":
     pass
