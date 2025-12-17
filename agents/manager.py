@@ -19,5 +19,5 @@ manager_agent = Agent(
     tools=[
         AgentTool(agent=call_transcripts_agent),
         AgentTool(agent=churn_analyzer_agent)
-    ],
+    ]
 )
