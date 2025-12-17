@@ -1,8 +1,0 @@
-[10:25:21.835] ============================================================
-[10:25:21.835] Performance Test for Churn Risk Analyzer
-[10:25:21.835] ============================================================
-[10:25:21.835] 🚀 Starting request...
-[10:25:21.835] Query: give me a churn risk analysis for vivo infusion
-[10:25:21.840] ✅ Response received in 0.00 seconds
-[10:25:21.840] ❌ Error: Status 404
-[10:25:21.840] Response: {"detail":"Not Found"}
