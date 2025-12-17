@@ -16,15 +16,8 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
 
     # Bedrock Configuration
-    # We default to the Claude 3.5 Sonnet ID if not provided in env
+    # We default to the Claude 4.5 Sonnet ID if not provided in env
     model_id: str = "bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-
-    # Redshift Configuration (for future use)
-    redshift_host: Optional[str] = None
-    redshift_port: int = 5439
-    redshift_db: Optional[str] = None
-    redshift_user: Optional[str] = None
-    redshift_password: Optional[str] = None
 
     # A2A Service URLs (Defaults for Docker Compose)
     transcript_agent_url: str = "http://transcript-service:8001"

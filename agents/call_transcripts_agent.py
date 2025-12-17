@@ -14,7 +14,7 @@ mcp_env = {
 
 # Pass AWS credentials explicitly if they exist in the environment
 # This ensures it works in Docker where AWS_PROFILE might not be configured
-for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"]:
+for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
     if val := os.getenv(key):
         mcp_env[key] = val
 
