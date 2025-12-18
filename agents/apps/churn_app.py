@@ -1,6 +1,7 @@
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
 from a2a.types import AgentCard
 from agents.churn_analyzer_agent import churn_analyzer_agent
+from starlette.responses import JSONResponse
 
 # Define the Agent Card metadata
 agent_card = AgentCard(
@@ -21,3 +22,6 @@ a2a_app = to_a2a(
     port=8002, 
     agent_card=agent_card
 )
+
+# Add health check endpoint for ECS
+a2a_app.add_route("/health", lambda r: JSONResponse({"status": "healthy"}), methods=["GET"])

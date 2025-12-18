@@ -7,16 +7,12 @@ from config import settings
 from agents.prompts import CALL_TRANSCRIPTS_AGENT_INSTRUCTION
 
 # Prepare environment variables for the MCP server
-mcp_env = {
+# We copy the entire environment to preserve PATH (needed for uvx) and IAM credentials
+mcp_env = os.environ.copy()
+mcp_env.update({
     'AWS_DEFAULT_REGION': settings.aws_region,
     'FASTMCP_LOG_LEVEL': 'INFO'
-}
-
-# Pass AWS credentials explicitly if they exist in the environment
-# This ensures it works in Docker where AWS_PROFILE might not be configured
-for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
-    if val := os.getenv(key):
-        mcp_env[key] = val
+})
 
 # MCP connection to Redshift
 redshift_mcp = McpToolset(
@@ -40,7 +36,7 @@ redshift_mcp = McpToolset(
 
 call_transcripts_agent = Agent(
     name="call_transcript_retriever",
-    model=LiteLlm(model=settings.model_id),
+    model=LiteLlm(model=settings.fast_model_id),
     description="Retrieves call transcripts from Gong database in Redshift",
     instruction=CALL_TRANSCRIPTS_AGENT_INSTRUCTION,
     tools=[redshift_mcp]

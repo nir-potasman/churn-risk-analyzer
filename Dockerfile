@@ -11,20 +11,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uvx /bin/uvx
 
+# Create a non-root user
+RUN useradd -m -u 1000 appuser
+
 # Set up environment
 WORKDIR /app
 ENV PYTHONPATH=/app
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
+# Change ownership of /app to appuser
+RUN chown appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
 # Copy project definition
-COPY pyproject.toml uv.lock ./
+COPY --chown=appuser:appuser pyproject.toml uv.lock ./
 
 # Install dependencies
 RUN uv sync --frozen --no-install-project
 
 # Copy source code
-COPY . .
+COPY --chown=appuser:appuser . .
 
 # Install the project itself
 RUN uv sync --frozen

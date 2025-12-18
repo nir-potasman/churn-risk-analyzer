@@ -7,17 +7,11 @@ from config import settings
 from agents.prompts import ACCOUNT_MANAGER_INSTRUCTION
 
 # Initialize the model using configuration from settings
-llm_model = LiteLlm(model=settings.model_id)
+llm_model = LiteLlm(model=settings.smart_model_id)
 
 # Define Remote Agents via A2A
 # These point to the separate microservices running in Docker/ECS
 # Note: The agent card is served at the root of the service, so we point directly to /.well-known/agent-card.json
-transcript_agent = RemoteA2aAgent(
-    name="call_transcript_retriever",
-    description="Retrieves call transcripts from Gong database in Redshift",
-    agent_card=f"{settings.transcript_agent_url}/.well-known/agent-card.json"
-)
-
 churn_agent = RemoteA2aAgent(
     name="churn_risk_analyzer",
     description="Analyzes customer call transcripts to calculate churn risk scores and identify red flags.",
@@ -30,7 +24,6 @@ manager_agent = Agent(
     description="The Account Manager for Stampli's Churn Risk Analyzer.",
     instruction=ACCOUNT_MANAGER_INSTRUCTION,
     tools=[
-        AgentTool(agent=transcript_agent),
         AgentTool(agent=churn_agent)
     ]
 )
