@@ -1,5 +1,5 @@
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
-from a2a.types import AgentCard
+from a2a.types import AgentCard, AgentCapabilities
 from agents.call_transcripts_agent import call_transcripts_agent
 from starlette.responses import JSONResponse
 
@@ -9,11 +9,11 @@ agent_card = AgentCard(
     url="http://transcript-service:8001",
     description="Retrieves call transcripts from Gong database in Redshift",
     version="1.0.0",
-    capabilities={},
+    capabilities=AgentCapabilities(),
     skills=[],
-    defaultInputModes=["text/plain"],
-    defaultOutputModes=["text/plain"],
-    supportsAuthenticatedExtendedCard=False,
+    default_input_modes=["text/plain"],
+    default_output_modes=["text/plain"],
+    supports_authenticated_extended_card=False,
 )
 
 # Create the A2A application

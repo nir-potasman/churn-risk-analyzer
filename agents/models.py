@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 
 class CallTranscript(BaseModel):
     date: str = Field(description="Date of the call (YYYY-MM-DD)")
