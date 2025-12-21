@@ -28,3 +28,14 @@ services:
       - "8002:8002"
     env_file: .env
 
+  frontend-service:
+    build: .
+    command: uv run uvicorn frontend.main:app --host 0.0.0.0 --port 3000
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      - MANAGER_SERVICE_URL=http://manager-service:8080
+    depends_on:
+      - manager-service
+

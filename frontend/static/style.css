@@ -1,0 +1,11 @@
+/* Custom CSS extensions */
+.card {
+    border-radius: 0.75rem;
+}
+.btn {
+    border-radius: 0.5rem;
+}
+.form-control {
+    border-radius: 0.5rem;
+}
+
