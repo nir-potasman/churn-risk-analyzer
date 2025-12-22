@@ -1,23 +1,33 @@
-from google.adk.agents.llm_agent import Agent
-from google.adk.models.lite_llm import LiteLlm
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
-from config import settings
-from agents.prompts import CHURN_ANALYZER_INSTRUCTION
+"""
+Churn Analyzer Agent - LangGraph Implementation.
+Analyzes call transcripts to calculate churn risk scores.
+"""
+from langchain_aws import ChatBedrockConverse
+from langchain_core.prompts import ChatPromptTemplate
 from agents.models import ChurnRiskAssessment
+from agents.prompts import CHURN_ANALYZER_INSTRUCTION
+from config import settings
 
-transcript_agent = RemoteA2aAgent(
-    name="call_transcript_retriever",
-    description="Retrieves call transcripts from Gong database in Redshift",
-    agent_card=f"{settings.transcript_agent_url}/.well-known/agent-card.json"
+# Initialize LLM with structured output
+# Using Claude 4.5 Sonnet (smart model) for analysis
+llm = ChatBedrockConverse(
+    model="eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    region_name=settings.aws_region,
+    temperature=0,
+    max_tokens=4096
 )
 
-churn_analyzer_agent = Agent(
-    name="churn_risk_analyzer",
-    model=LiteLlm(model=settings.smart_model_id),
-    description="Analyzes customer call transcripts to calculate churn risk scores and identify red flags.",
-    instruction=CHURN_ANALYZER_INSTRUCTION,
-    tools=[AgentTool(agent=transcript_agent)],
-    output_schema=ChurnRiskAssessment,
-)
+# Create structured output chain
+structured_llm = llm.with_structured_output(ChurnRiskAssessment)
 
+# Build the analysis chain with prompt template
+analysis_prompt = ChatPromptTemplate.from_messages([
+    ("system", CHURN_ANALYZER_INSTRUCTION),
+    ("human", "Analyze the following call transcripts and provide a churn risk assessment:\n\n{transcripts}")
+])
+
+# Chain: prompt → structured LLM → ChurnRiskAssessment
+analyzer_chain = analysis_prompt | structured_llm
+
+# Usage: assessment = analyzer_chain.invoke({"transcripts": transcript_text})
+# Returns: ChurnRiskAssessment Pydantic model directly!

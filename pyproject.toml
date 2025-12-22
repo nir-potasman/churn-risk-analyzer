@@ -1,19 +1,30 @@
 [project]
 name = "churn-risk-analyzer"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Multi-agent churn risk analyzer using LangGraph"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "a2a>=0.44",
+    # LangGraph core - for StateGraph, create_react_agent, etc.
+    "langgraph>=0.2.38",
+    
+    # LangChain core - for tools, prompts, chains
+    "langchain-core>=0.3.0",
+    
+    # LangChain AWS - for ChatBedrockConverse with structured output
+    "langchain-aws>=0.2.0",
+    
+    # AWS SDK - for Redshift Data API
     "boto3>=1.42.9",
-    "fastapi>=0.123.10",
-    "google-adk[a2a]>=1.21.0",
+    
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
     "httpx>=0.28.1",
     "jinja2>=3.1.5",
-    "litellm>=1.80.10",
-    "mcp>=1.24.0",
-    "pydantic>=2.12.5",
-    "pydantic-settings>=2.12.0",
-    "python-dotenv>=1.2.1",
+    
+    # Data validation
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
 ]

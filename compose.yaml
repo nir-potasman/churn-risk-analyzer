@@ -1,29 +1,28 @@
 services:
   manager-service:
     build: .
-    command: uv run uvicorn agents.apps.manager_app:a2a_app --host 0.0.0.0 --port 8080
+    command: uv run uvicorn agents.apps.manager_app:app --host 0.0.0.0 --port 8080
     ports:
       - "8080:8080"
     env_file: .env
     environment:
       - TRANSCRIPT_AGENT_URL=http://transcript-service:8001
       - CHURN_AGENT_URL=http://churn-service:8002
-      # Ensure config.py picks these up (pydantic settings matches case-insensitive)
     depends_on:
       - transcript-service
       - churn-service
 
   transcript-service:
     build: .
-    command: uv run uvicorn agents.apps.transcript_app:a2a_app --host 0.0.0.0 --port 8001
+    command: uv run uvicorn agents.apps.transcript_app:app --host 0.0.0.0 --port 8001
     ports:
       - "8001:8001"
     env_file: .env
-    # Redshift MCP credentials passed via .env
+    # Redshift credentials passed via .env (boto3 uses them directly)
 
   churn-service:
     build: .
-    command: uv run uvicorn agents.apps.churn_app:a2a_app --host 0.0.0.0 --port 8002
+    command: uv run uvicorn agents.apps.churn_app:app --host 0.0.0.0 --port 8002
     ports:
       - "8002:8002"
     env_file: .env
@@ -38,4 +37,3 @@ services:
       - MANAGER_SERVICE_URL=http://manager-service:8080
     depends_on:
       - manager-service
-
