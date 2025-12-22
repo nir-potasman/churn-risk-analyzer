@@ -22,5 +22,9 @@ COPY agents/apps/__init__.py agents/apps/
 COPY agents/apps/churn_app.py agents/apps/
 
 EXPOSE 8002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" || exit 1
+
 CMD ["uv", "run", "uvicorn", "agents.apps.churn_app:app", "--host", "0.0.0.0", "--port", "8002"]
 

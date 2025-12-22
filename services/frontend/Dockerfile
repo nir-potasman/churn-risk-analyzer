@@ -16,5 +16,9 @@ RUN uv sync --frozen --no-install-project || uv sync --no-install-project
 COPY frontend/ frontend/
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')" || exit 1
+
 CMD ["uv", "run", "uvicorn", "frontend.main:app", "--host", "0.0.0.0", "--port", "3000"]
 

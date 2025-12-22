@@ -1,0 +1,134 @@
+{
+  "family": "churn-risk-analyzer",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+  "taskRoleArn": "${TASK_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "manager",
+      "image": "${ECR_REGISTRY}/churn-manager:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "TRANSCRIPT_AGENT_URL", "value": "http://localhost:8001"},
+        {"name": "CHURN_AGENT_URL", "value": "http://localhost:8002"}
+      ],
+      "secrets": [
+        {"name": "GONG_API_KEY", "valueFrom": "${GONG_API_KEY_ARN}"},
+        {"name": "GONG_API_BASE_URL", "valueFrom": "${GONG_API_BASE_URL_ARN}"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/churn-risk-analyzer",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "manager"
+        }
+      }
+    },
+    {
+      "name": "transcript",
+      "image": "${ECR_REGISTRY}/churn-transcript:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8001,
+          "protocol": "tcp"
+        }
+      ],
+      "secrets": [
+        {"name": "GONG_API_KEY", "valueFrom": "${GONG_API_KEY_ARN}"},
+        {"name": "GONG_API_BASE_URL", "valueFrom": "${GONG_API_BASE_URL_ARN}"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/churn-risk-analyzer",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "transcript"
+        }
+      }
+    },
+    {
+      "name": "churn",
+      "image": "${ECR_REGISTRY}/churn-analyzer:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8002,
+          "protocol": "tcp"
+        }
+      ],
+      "secrets": [
+        {"name": "SMART_MODEL_ID", "valueFrom": "${SMART_MODEL_ID_ARN}"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/churn-risk-analyzer",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "churn"
+        }
+      }
+    },
+    {
+      "name": "frontend",
+      "image": "${ECR_REGISTRY}/churn-frontend:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "MANAGER_SERVICE_URL", "value": "http://localhost:8080"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/churn-risk-analyzer",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "frontend"
+        }
+      }
+    }
+  ]
+}
+
