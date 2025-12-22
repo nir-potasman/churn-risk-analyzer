@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stampli Churn Risk Analyzer</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <img src="/static/stampli_logo.jpg" alt="Stampli" class="logo">
+                <h1>Churn Risk Analyzer</h1>
+            </div>
+            <button id="clearBtn" class="clear-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3,6 5,6 21,6"></polyline>
+                    <path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2v2"></path>
+                </svg>
+                Clear
+            </button>
+        </header>
+
+        <!-- Chat Container -->
+        <main class="chat-container" id="chatContainer">
+            <!-- Welcome message -->
+            <div class="message assistant">
+                <div class="message-content">
+                    <div class="welcome-message">
+                        <h2>👋 Welcome to the Churn Risk Analyzer</h2>
+                        <p>I can help you analyze customer churn risk and retrieve call transcripts from Gong.</p>
+                        <div class="example-queries">
+                            <p><strong>Try asking:</strong></p>
+                            <button class="example-btn" onclick="setQuery('Give me a churn risk analysis for Vivo Infusion')">
+                                📊 "Give me a churn risk analysis for Vivo Infusion"
+                            </button>
+                            <button class="example-btn" onclick="setQuery('Get me the call transcripts for Vivo Infusion')">
+                                📞 "Get me the call transcripts for Vivo Infusion"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Input Area -->
+        <footer class="input-area">
+            <form id="chatForm" class="input-form">
+                <input 
+                    type="text" 
+                    id="userInput" 
+                    placeholder="Ask about churn risk or request call transcripts..." 
+                    autocomplete="off"
+                    autofocus
+                >
+                <button type="submit" id="sendBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22,2 15,22 11,13 2,9 22,2"></polygon>
+                    </svg>
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html>
+
