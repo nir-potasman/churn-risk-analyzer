@@ -14,16 +14,11 @@ class Settings(BaseSettings):
     aws_secret_access_key: Optional[str] = None
     aws_session_token: Optional[str] = None
 
-    # Bedrock Model IDs (for ChatBedrockConverse - no 'bedrock/' prefix needed)
+    # Bedrock Model ID (for ChatBedrockConverse - no 'bedrock/' prefix needed)
     # Claude 4.5 Sonnet - Smart model for analysis and orchestration
     smart_model_id: str = Field(
         default="eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        alias="ANALYZER_MODEL_ID",
-    )
-    # Claude 4.5 Haiku - Fast model for data retrieval
-    fast_model_id: str = Field(
-        default="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-        alias="RETRIEVER_MODEL_ID",
+        alias="SMART_MODEL_ID",
     )
 
     # Gong Database API (fast endpoint - replaces boto3 Redshift)

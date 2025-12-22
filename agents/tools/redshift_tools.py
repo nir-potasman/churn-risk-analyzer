@@ -3,10 +3,7 @@ Gong Database tools - Fast direct API access.
 Uses REST API endpoints for quick data retrieval.
 """
 import httpx
-import json
 import base64
-import re
-from typing import Optional
 from config import settings
 
 # API endpoints
@@ -26,24 +23,6 @@ SQL_TEMPLATES = {
         FROM calls c
         JOIN call_accounts ca ON c.id = ca.call_id
         WHERE LOWER(ca.acc_name) LIKE '%{company}%'
-        ORDER BY c.started DESC
-        LIMIT {limit}
-    """,
-    
-    "call_by_id": """
-        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
-        FROM calls c
-        JOIN call_accounts ca ON c.id = ca.call_id
-        WHERE c.id = '{call_id}'
-    """,
-    
-    "calls_by_date_range": """
-        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
-        FROM calls c
-        JOIN call_accounts ca ON c.id = ca.call_id
-        WHERE LOWER(ca.acc_name) LIKE '%{company}%'
-          AND c.started >= '{start_date}'
-          AND c.started <= '{end_date}'
         ORDER BY c.started DESC
         LIMIT {limit}
     """,
@@ -232,26 +211,3 @@ def get_transcripts_for_company(company_name: str, limit: int = 5) -> list[dict]
         })
     
     return result
-
-
-# Legacy tool wrapper (for backward compatibility with agent if needed)
-def _execute_query_formatted(sql: str, limit: int = 100) -> str:
-    """Execute query and return formatted string (legacy format)."""
-    try:
-        data = execute_query(sql, limit)
-        if not data:
-            return "No results found"
-        
-        columns = list(data[0].keys()) if data else []
-        output = f"Columns: {', '.join(columns)}\n"
-        output += "-" * 50 + "\n"
-        for row in data[:100]:
-            output += f"{list(row.values())}\n"
-        
-        if len(data) > 100:
-            output += f"\n... and {len(data) - 100} more rows (truncated)"
-        
-        return output
-        
-    except Exception as e:
-        return f"Error executing query: {str(e)}"

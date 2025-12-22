@@ -66,7 +66,3 @@ def retrieve_transcripts(company_name: str, limit: int = 5) -> CallTranscriptLis
             continue
     
     return CallTranscriptList(transcripts=transcripts)
-
-
-# For backward compatibility
-retriever_agent = None  # No longer using LangGraph agent
