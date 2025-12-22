@@ -1,0 +1,143 @@
+{\rtf1\ansi\ansicpg1250\cocoartf2865
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset0 LucidaGrande;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww30040\viewh17520\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 1. Calls table:\
+id (primary ID; the \'93call id\'94)\
+url (link to the call)\
+title (title of the conversation)\
+scheduled (DATE only, scheduled start date of the call)\
+started (DATE only, actual start date of the call \'97 this is the date used to determine when the call took place)\
+duration (seconds, call length)\
+primaryuserid (userid of the user who created the call)\
+direction (outbound, inbound, conference, etc.)\
+system (Zoom, GongConnect, Hubspot)\
+media (Audio or Video)\
+language (language of the call)\
+meetingurl (meeting URL, valid only during the call)\
+sdrdisposition (SDR call status)\
+clientuniqeid (client id)\
+brief (summary of the call content)\
+Default fields to show in most list answers\
+id, title, url, started, duration, brief\
+\
+2. Call_parties table:\
+call_id (foreign key linking to calls.id)\
+emailaddress (email of the call participant)\
+name (full name of the participant)\
+title (participant\'92s title; may be empty)\
+userid (user ID of the participant; applies only to Stampli employees)\
+speakerid (ID of the participant who was speaking, needed for mapping in the transcript)\
+affiliation (participant affiliation: internal, external, sometimes unknown)\
+phonenumber (participant\'92s phone number; sometimes missing)\
+method (Attendee, Invitee, or both)\
+\
+3. call_opportunities table:\
+call_id (foreign key linking to calls.id)\
+objectid (opportunity ID)\
+opp_name (name of the opportunity)\
+opp_stagename (status of the opportunity; can also indicate call type like Demo, Discovery, QBR, etc.)\
+opp_procurement_interested_ (procurement interest)\
+opp_amount (opportunity value)\
+opp_hs_manual_forecast_category (manual forecast category of the opportunity)\
+opp_hubspot_owner_id (HubSpot owner ID of the opportunity)\
+opp_hs_analytics_source (source of the opportunity discovery)\
+\
+Additional guidance for categorization and call type detection:\
+- To categorize a call as **prospect** or **current customer**:\
+  * Use `call_accounts.acc_lifecyclestage` or `call_accounts.acc_hs_lead_status` (values containing \'93customer\'94 
+\f1 \uc0\u8594 
+\f0  current customer).\
+  * Also check `call_opportunities.opp_stagename` for \'93Closed Won\'94 
+\f1 \uc0\u8594 
+\f0  current customer.\
+  * Otherwise classify as prospect.\
+- To categorize a call by **stage/type** (e.g., Demo, Discovery, QBR):\
+  * Use `call_opportunities.opp_stagename` first, since it often contains values like \'93Demo\'94, \'93Discovery Meeting\'94, \'93QBR\'94.\
+  * If empty, fallback to `call_topics.name`, `call_trackers.name`, or even keywords in `calls.title` / `calls.brief`.\
+\
+4. call_accounts table:\
+call_id (foreign key linking to calls.id)\
+acc_company_state_zi (company location)\
+acc_industry (industry / business area of the company)\
+acc_hubspot_owner_id (HubSpot owner ID)\
+acc_hs_analytics_source (acquisition source)\
+acc_erp__c (ERP system identifier; use this field to detect the customer\'92s ERP. Normalize via the mapping below rather than using acc_name)\
+acc_sdr_owner (SDR owner ID)\
+acc_deal_stage (stage of the deal associated with the company)\
+acc_website (company website)\
+acc_territory_aug2020 (sales territory as of August 2020)\
+acc_phone (company phone number)\
+acc_name (company name)\
+acc_hs_lead_status (current lead status)\
+acc_company_employees_zi_ (number of employees)\
+acc_lifecyclestage (current lifecycle stage of the company relationship)\
+\
+5. call_outlines table:\
+call_id (foreign key linking to calls.id)\
+text_content (description of what was discussed; there can be multiple entries per call_id)\
+start_time (moment when the topic began, can be used to determine sequence)\
+parent_topic_id (ID linking to the related topic in the call_topics table)\
+\
+6. call_topics table:\
+id (topic ID; not the same as call_id)\
+call_id (foreign key linking to calls.id)\
+topic_type (type of the topic)\
+name (name of the topic; there can be multiple per call_id)\
+\
+7. call_trackers table:\
+call_id (foreign key linking to calls.id)\
+tracker_id (ID of a specific tracker; repeated for the same type of tracker)\
+name (name of the tracker)\
+type (tracker type: KEYWORD or SMART)\
+count (number of keyword occurrences)\
+\
+8. party_contacts table:\
+party_id (foreign key linking to call_parties.id)\
+con_linkedin_profile_link (LinkedIn profile link of the person)\
+con_firstname (first name)\
+con_company_state_zi (region)\
+con_contact_lead_score_engagement (engagement score)\
+con_hubspot_owner_id (HubSpot owner ID)\
+con_email (email address)\
+con_jobtitle (job title)\
+con_lastname (last name)\
+con_phone (phone number)\
+\
+9. users table (Stampli employees only):\
+id (user ID)\
+emailaddress (email address)\
+active (whether the user is active)\
+firstname (first name)\
+lastname (last name)\
+title (title / job role)\
+phonenumber (phone number)\
+managerid (manager\'92s user ID)\
+\
+10. ae_talk_time table:\
+call_id (foreign key linking to calls.id)\
+speakerid (ID of the participant who was speaking, needed for mapping in the transcript)\
+ae_name (name of AE)\
+talk_time_percent (percentage in % of how much of call time was someone speaking)\
+call_type (demo or discovery call)\
+talk_time_formatted (talk time)\
+call_duration_seconds (call duration in seconds)\
+\
+11. competitor_analysis_results:\
+call_id (foreign key linking to calls.id)\
+competitor_name (name of the company, ERP or Automation)\
+competitor_type (ERP_SYSTEM or AP_AUTOMATION)\
+connotations ( negative, neutral or positive)\
+buyer_sentiment (different text related to sentiment)\
+context (short context of the competition mentions)\
+overall_competitive_pressure (low, medium or high)\
+objections (list of objections raised by the client)\
+feature_comparisons (list of comparisons between competition and stampli in this call)\
+prospect_quotes (quotes related to objections and feature comparisons raised by the prospect)\
+stampli_ae_context (What Account Executive said about the objections and feature comparisons - quotes)\
+extended_context_quotes ( more context - quotes)\
+\
+}

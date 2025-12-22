@@ -1,0 +1,331 @@
+{\rtf1\ansi\ansicpg1250\cocoartf2865
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 # COMPETITOR ANALYSIS WORKFLOW - GONG DATABASE MODULE\
+\
+## Overview\
+The competitor_analysis_results table contains AI-analyzed competitor mentions from call transcripts. \
+This endpoint provides structured competitive intelligence including quotes, objections, and buyer sentiment.\
+\
+## When to Use Competitor Analysis\
+- User asks about competitors mentioned in calls\
+- User wants competitive intelligence (which competitors, how often mentioned)\
+- User needs detailed context: quotes, objections, feature comparisons\
+- User asks about competitive pressure or buyer sentiment\
+- User wants to analyze competitive landscape over time\
+\
+## Available Endpoint\
+POST /gong_database/competitor-analysis\
+- Input: \{"call_ids": ["id1", "id2", ...]\}\
+- Output: Text files with formatted analysis (openaiFileResponse format)\
+- Limit: Maximum 300 call_ids per request\
+\
+## TWO-STEP WORKFLOW (MANDATORY)\
+\
+### Step 1: Filter calls using POST /gong_database/query\
+ALWAYS start by querying the competitor_analysis_results table to find relevant call_ids.\
+\
+**Example queries:**\
+\
+Find calls mentioning specific competitor:\
+```sql\
+SELECT DISTINCT car.call_id, car.competitor_name, car.overall_competitive_pressure, c.started, c.title\
+FROM competitor_analysis_results car\
+JOIN calls c ON car.call_id = c.id\
+WHERE car.competitor_name ILIKE '%Bill.com%'\
+  AND c.started >= '2024-10-01'\
+ORDER BY c.started DESC\
+```\
+\
+Find calls by competitive pressure:\
+```sql\
+SELECT DISTINCT car.call_id, c.title, c.started, car.overall_competitive_pressure\
+FROM competitor_analysis_results car\
+JOIN calls c ON car.call_id = c.id\
+WHERE car.overall_competitive_pressure = 'high'\
+  AND c.started >= '2024-10-01'\
+ORDER BY c.started DESC\
+```\
+\
+Find calls with multiple competitors:\
+```sql\
+SELECT car.call_id, c.started, c.title,\
+       COUNT(DISTINCT car.competitor_name) as competitor_count,\
+       STRING_AGG(DISTINCT car.competitor_name, ', ') as competitors\
+FROM competitor_analysis_results car\
+JOIN calls c ON car.call_id = c.id\
+WHERE c.started >= '2024-10-01'\
+GROUP BY car.call_id, c.started, c.title\
+HAVING COUNT(DISTINCT car.competitor_name) > 1\
+ORDER BY competitor_count DESC\
+```\
+\
+Find AP Automation vs ERP mentions:\
+```sql\
+SELECT car.competitor_type, \
+       COUNT(DISTINCT car.call_id) as calls_with_mentions,\
+       STRING_AGG(DISTINCT car.competitor_name, ', ') as competitors\
+FROM competitor_analysis_results car\
+JOIN calls c ON car.call_id = c.id\
+WHERE c.started >= '2024-10-01'\
+GROUP BY car.competitor_type\
+```\
+\
+**After Step 1:**\
+1. Tell user: "I found X calls matching your criteria [describe criteria]"\
+2. Show brief summary of results (e.g., "15 calls mentioning Bill.com, 8 with high competitive pressure")\
+3. Say: "I will now retrieve the detailed competitor analysis for these calls. Please confirm to proceed."\
+4. WAIT for user confirmation\
+\
+### Step 2: Retrieve analysis using POST /gong_database/competitor-analysis\
+Only after user confirms, use the call_ids from Step 1.\
+\
+**Request format:**\
+```json\
+\{\
+  "call_ids": ["call_id_1", "call_id_2", "call_id_3"]\
+\}\
+```\
+\
+**After Step 2:**\
+1. Tell user: "I have retrieved detailed competitor analysis for X calls"\
+2. Summarize key findings from the analysis files\
+3. Ask: "Would you like me to analyze specific aspects (e.g., common objections, feature comparisons)?"\
+\
+## Analysis Content Structure\
+\
+Each call's analysis includes:\
+\
+**Call Metadata:**\
+- Call ID, title, date, duration\
+- Overall competitive pressure (none/low/medium/high)\
+\
+**Per Competitor:**\
+- Competitor name (e.g., "Bill.com", "Oracle NetSuite")\
+- Competitor type (AP_AUTOMATION or ERP_SYSTEM)\
+- Connotations (positive/negative/neutral)\
+- Buyer sentiment (overall attitude toward competitor)\
+- Context (plain text description)\
+\
+**Detailed Intelligence:**\
+- Objections: List of objection descriptions (NO quotes, just summaries)\
+- Feature Comparisons: List of comparison descriptions (NO quotes, just summaries)\
+- Prospect Quotes: Exact verbatim quotes from PROSPECT/CUSTOMER (affiliation='external', WITH "quotes")\
+- Stampli AE Context: Exact verbatim quotes from STAMPLI EMPLOYEE (affiliation='internal', WITH "quotes")\
+- Extended Context Quotes: Additional exact quotes for context (WITH "quotes")\
+- Analysis Summary: High-level summary of competitive dynamics\
+\
+**CRITICAL - Quote Usage Rules:**\
+- Use quotation marks ("") ONLY for fields: prospect_quotes, stampli_ae_context, extended_context_quotes\
+- DO NOT use quotation marks for: objections, feature_comparisons, context, buyer_sentiment\
+- Objections should be paraphrased descriptions, not direct quotes\
+- Feature comparisons should be summarized comparisons, not direct quotes\
+\
+**CRITICAL - Quote Attribution Warning:**\
+- AI analysis may misattribute quotes (prospect quote might be from AE, or vice versa)\
+- **Prospect** = customer/potential customer (affiliation = 'external', NOT Stampli)\
+- **AE** = Stampli Account Executive (affiliation = 'internal', Stampli employee)\
+- ALWAYS verify speaker affiliation before presenting quotes to user\
+- Use transcript + call_parties table to confirm who actually said the quote\
+- Correct attribution when presenting: "Despite being in prospect_quotes, this was actually said by Stampli AE"\
+\
+## Database Schema Reference\
+\
+**Table: competitor_analysis_results**\
+- call_id (VARCHAR, FK to calls.id)\
+- competitor_name (VARCHAR) - Name of competitor\
+- competitor_type (VARCHAR) - "AP_AUTOMATION" or "ERP_SYSTEM"\
+- connotations (VARCHAR) - "positive", "negative", or "neutral"\
+- buyer_sentiment (VARCHAR) - Overall buyer attitude (paraphrased, no quotes)\
+- context (VARCHAR) - Plain text context (paraphrased, no quotes)\
+- overall_competitive_pressure (VARCHAR) - "none", "low", "medium", "high"\
+- objections (VARCHAR) - JSON array of objection DESCRIPTIONS (no quotes, paraphrased)\
+- feature_comparisons (VARCHAR) - JSON array of comparison DESCRIPTIONS (no quotes, paraphrased)\
+- prospect_quotes (VARCHAR) - JSON array of EXACT VERBATIM quotes with ""\
+- stampli_ae_context (VARCHAR) - JSON array of EXACT VERBATIM AE quotes with ""\
+- extended_context_quotes (VARCHAR) - JSON array of EXACT VERBATIM quotes with ""\
+- analysis_summary (VARCHAR) - High-level summary text (paraphrased, no quotes)\
+- analyzed_at (TIMESTAMP) - When analysis was performed\
+\
+**Quote vs Non-Quote Fields:**\
+- WITH quotes (""): prospect_quotes, stampli_ae_context, extended_context_quotes\
+- WITHOUT quotes: objections, feature_comparisons, context, buyer_sentiment, analysis_summary\
+\
+## Important Rules\
+\
+1. **NEVER skip Step 1** - Always query first to get call_ids\
+2. **ALWAYS communicate after each step** - Tell user what you did and what's next\
+3. **ALWAYS wait for confirmation** - Don't proceed to Step 2 without user approval\
+4. **Respect the 300 call_id limit** - If more calls match, ask user to narrow criteria\
+5. **Verify quote attribution** - Before showing quotes, verify speaker affiliation via transcript and call_parties (see CRITICAL Technical Rules)\
+6. **Quote accurately** - When showing quotes (prospect_quotes, stampli_ae_context, extended_context_quotes), use exact text with ""\
+7. **Paraphrase objections/comparisons** - These fields contain descriptions, not quotes (no "")\
+8. **Explain competitive pressure** - When showing results, explain what high/medium/low means\
+\
+## CRITICAL Technical Rules\
+\
+### Quote Attribution Verification (MANDATORY)\
+Before presenting quotes from prospect_quotes or stampli_ae_context to user, you MUST verify who actually said them:\
+\
+**Why:** AI analysis may misattribute quotes. A prospect quote might contain AE's words and vice versa.\
+\
+**Key Definitions:**\
+- **Prospect** = Potential customer (affiliation = 'external', anyone NOT from Stampli)\
+- **AE (Account Executive)** = Stampli employee (affiliation = 'internal', from Stampli)\
+\
+**Verification Process:**\
+1. When you receive analysis with quotes, fetch the call transcript using POST /gong_database/transcripts\
+2. Search for the exact quote in the transcript\
+3. Check the speaker's affiliation in call_parties table (affiliation field)\
+4. Verify:\
+   - prospect_quotes: Speaker MUST have affiliation = 'external' (customer/prospect)\
+   - stampli_ae_context: Speaker MUST have affiliation = 'internal' (Stampli employee/AE)\
+\
+**How to verify speaker affiliation:**\
+```sql\
+SELECT cp.name, cp.affiliation, cp.emailaddress, u.firstname, u.lastname\
+FROM call_parties cp\
+LEFT JOIN users u ON cp.userid = u.id\
+WHERE cp.call_id = 'call_id_here'\
+```\
+\
+**Handling misattributed quotes:**\
+- If prospect_quotes contains quote from affiliation = 'internal': This is AE speaking, NOT prospect\
+- If stampli_ae_context contains quote from affiliation = 'external': This is prospect speaking, NOT AE\
+- Correct attribution when presenting to user\
+- Tell user: "Note: I've verified quote attribution against the transcript"\
+- If quote cannot be found in transcript: Flag it as "attribution uncertain"\
+\
+**Example verification:**\
+```\
+Analysis says (prospect_quotes): "Our system handles this automatically"\
+\uc0\u8594  Check transcript \u8594  Speaker is "Sarah Johnson" \u8594  Check call_parties \u8594  affiliation = 'internal'\
+\uc0\u8594  CORRECTION: This is actually Stampli AE speaking, NOT prospect\
+\uc0\u8594  Present to user: "Stampli Account Executive mentioned: 'Our system handles this automatically'"\
+```\
+\
+### Date Filtering - ALWAYS use calls.started\
+When filtering competitor analysis by date, you MUST join with calls table and use calls.started:\
+\
+**CORRECT:**\
+```sql\
+SELECT car.call_id, car.competitor_name, c.started\
+FROM competitor_analysis_results car\
+JOIN calls c ON car.call_id = c.id\
+WHERE c.started >= '2024-10-01'  -- Use calls.started for call date\
+```\
+\
+**INCORRECT:**\
+```sql\
+SELECT call_id, competitor_name\
+FROM competitor_analysis_results\
+WHERE analyzed_at >= '2024-10-01'  -- WRONG! analyzed_at is when AI processed it, not call date\
+```\
+\
+**Why:** analyzed_at shows when analysis was performed (batch processing date), NOT when the call happened. Always use calls.started for call dates.\
+\
+### Endpoint Call Requirements\
+When calling POST /gong_database/competitor-analysis:\
+\
+**Required:**\
+- MUST include "call_ids" parameter (array of strings)\
+- MUST use call_ids obtained from Step 1 query\
+- MUST NOT use other identifiers (competitor_name, analyzed_at, etc.)\
+\
+**CORRECT:**\
+```json\
+\{\
+  "call_ids": ["8234567890123456789", "9234567890123456789"]\
+\}\
+```\
+\
+**INCORRECT:**\
+```json\
+\{\
+  "competitor_name": "Bill.com"  // WRONG - endpoint doesn't accept this\
+\}\
+```\
+\
+## Common Use Cases\
+\
+**Use Case 1: "Show me calls mentioning Bill.com"**\
+1. Query competitor_analysis_results for Bill.com mentions\
+2. Show count and brief overview\
+3. Ask for confirmation\
+4. Retrieve detailed analysis\
+5. If presenting quotes, fetch transcript to verify speaker attribution\
+6. Check call_parties for affiliation (internal vs external)\
+7. Present quotes with verified attribution\
+8. Summarize key findings\
+\
+**Use Case 2: "What competitors are mentioned most often?"**\
+1. Query to aggregate competitor mentions (COUNT, GROUP BY)\
+2. Show top competitors with mention counts\
+3. If user wants details, proceed with Step 2 for specific competitors\
+\
+**Use Case 3: "Show me high competitive pressure calls"**\
+1. Query for overall_competitive_pressure = 'high'\
+2. Show count and date range\
+3. Ask for confirmation\
+4. Retrieve analysis\
+5. Highlight common patterns across high-pressure calls\
+\
+**Use Case 4: "Compare how we stack up against Coupa vs Bill.com"**\
+1. Query for both competitors separately\
+2. Show call counts and pressure levels for each\
+3. Ask for confirmation\
+4. Retrieve analysis for both\
+5. Compare and contrast feature_comparisons, objections, and buyer_sentiment\
+\
+## Error Handling\
+\
+**No analysis found:**\
+- Tell user: "No competitor analysis found for these criteria"\
+- Suggest: "Would you like me to check if transcripts exist for these calls?"\
+\
+**Too many call_ids (>300):**\
+- Tell user: "Found X calls, but limit is 300"\
+- Ask user to narrow criteria (date range, specific competitor, pressure level)\
+\
+**Partial results:**\
+- If some call_ids have no analysis, mention this\
+- Proceed with available data\
+\
+## Correct Data Format Examples\
+\
+**CORRECT - Objections (paraphrased, no quotes):**\
+```\
+objections: ["Integration issues with NetSuite", "High switching costs", "Long implementation timeline"]\
+```\
+\
+**INCORRECT - Objections (should not have quotes inside):**\
+```\
+objections: ["\\"We had problems with NetSuite integration\\"", "\\"It's too expensive\\""]\
+```\
+\
+**CORRECT - Prospect Quotes (exact verbatim with quotes):**\
+```\
+prospect_quotes: ["We recently sat down with bill and we looked at their system and, you know, their system; it was a no brainer because they don't integrate with sage intacct construction."]\
+```\
+\
+**CORRECT - Feature Comparisons (descriptions, no quotes):**\
+```\
+feature_comparisons: ["Bill.com has simpler UI but limited ERP support", "Stampli offers better automation and AI features"]\
+```\
+\
+**Key Rule:** \
+- Objections/comparisons = WHAT was said (paraphrased)\
+- Quotes = HOW it was said (verbatim)\
+\
+## Notes\
+\
+- Analysis data is generated separately (not part of daily sync)\
+- Not all calls have competitor analysis (only manually analyzed calls)\
+- To check if a call has analysis: Query competitor_analysis_results table\
+- Analysis uses AI (GPT-5-nano with ensemble voting) for high accuracy\
+- JSON fields (objections, quotes, etc.) may need parsing in some contexts\
+}
