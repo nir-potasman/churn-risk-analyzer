@@ -2,22 +2,23 @@
 Manager Agent - LangGraph Implementation.
 Orchestrates the churn risk analysis workflow with conditional routing.
 """
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_aws import ChatBedrockConverse
 from langgraph.graph import StateGraph, START, END
 import httpx
 from config import settings
+from agents.models import CallTranscriptList, ChurnRiskAssessment
 
 
-# State model using Pydantic (enables validation per LangGraph docs)
+# State model using Pydantic with proper type annotations
 class ManagerState(BaseModel):
     """State for Manager Agent StateGraph."""
     user_query: str
     company_name: str = ""
     intent: Literal["transcript", "analysis"] = "analysis"
-    transcripts: dict = Field(default_factory=dict)
-    assessment: dict = Field(default_factory=dict)
+    transcripts: Optional[CallTranscriptList] = None
+    assessment: Optional[ChurnRiskAssessment] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -28,7 +29,7 @@ class IntentExtraction(BaseModel):
     """Structured output for intent extraction from user query."""
     company_name: str = Field(description="The company name to analyze")
     intent: Literal["transcript", "analysis"] = Field(
-        description="'transcript' if user only wants call data, 'analysis' for full churn risk"
+        description="Use 'analysis' if user asks for churn risk, analysis, assessment, risk score. Use 'transcript' ONLY if user explicitly asks for transcripts, calls, or conversation records."
     )
 
 
@@ -44,13 +45,21 @@ intent_extractor = llm.with_structured_output(IntentExtraction)
 
 def extract_intent(state: ManagerState) -> dict:
     """Parse user query to extract company name and intent."""
-    prompt = f"""Extract the company name and user intent from this query: "{state.user_query}"
+    prompt = f"""Analyze this user query and extract the company name and intent:
 
-Rules:
-- If the user asks for "transcript", "call", "calls", or "conversation" → intent is "transcript"
-- If the user asks for "analysis", "churn", "risk", or "assessment" → intent is "analysis"
-- Default to "analysis" if unclear
-- Extract the company name mentioned in the query"""
+Query: "{state.user_query}"
+
+Intent Classification Rules:
+- "analysis" = user wants churn risk ANALYSIS, risk assessment, churn score, or any analytical insight
+- "transcript" = user ONLY wants raw call transcripts/recordings, NOT analysis
+
+Keywords that indicate "analysis" intent:
+- "churn", "risk", "analysis", "analyze", "assessment", "score", "evaluate", "health"
+
+Keywords that indicate "transcript" intent:
+- "transcript", "recording", "call log", "conversation", "what was said"
+
+DEFAULT TO "analysis" if the query mentions risk, churn, or analysis in any form."""
     
     result = intent_extractor.invoke(prompt)
     return {"company_name": result.company_name, "intent": result.intent}
@@ -71,26 +80,29 @@ def call_retriever(state: ManagerState) -> dict:
         timeout=180.0  # 3 minutes for DB queries
     )
     response.raise_for_status()
-    return {"transcripts": response.json()}
+    # Parse response into proper Pydantic model
+    transcripts = CallTranscriptList.model_validate(response.json())
+    return {"transcripts": transcripts}
 
 
 def call_analyzer(state: ManagerState) -> dict:
     """HTTP call to analyzer service."""
     response = httpx.post(
         f"{settings.churn_agent_url}/analyze",
-        json={"transcripts": state.transcripts},
+        json={"transcripts": state.transcripts.model_dump() if state.transcripts else {}},
         timeout=180.0  # 3 minutes for analysis
     )
     response.raise_for_status()
-    return {"assessment": response.json()}
+    # Parse response into proper Pydantic model
+    assessment = ChurnRiskAssessment.model_validate(response.json())
+    return {"assessment": assessment}
 
 
 def format_output(state: ManagerState) -> dict:
     """Format final response based on intent."""
-    # Return the appropriate output based on what the user asked for
-    if state.intent == "transcript":
-        return state.model_dump()
-    return state.model_dump()
+    # State is already properly typed, just return it as-is
+    # The FastAPI app will serialize it to JSON
+    return {}
 
 
 # Build graph with Pydantic state (per LangGraph docs)

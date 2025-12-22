@@ -22,7 +22,7 @@ class AnalyzeRequest(BaseModel):
     user_query: str
 
 
-@app.post("/analyze")
+@app.post("/query")
 async def handle_query(request: AnalyzeRequest):
     """Process user query and route to appropriate agents.
     
@@ -45,20 +45,27 @@ async def handle_query(request: AnalyzeRequest):
         
         # Return the appropriate output based on intent
         intent = result.get("intent", "analysis")
+        company_name = result.get("company_name", "")
         
         if intent == "transcript":
             # User asked for transcripts only
+            transcripts = result.get("transcripts")
+            # Handle both Pydantic model and dict
+            transcripts_dict = transcripts.model_dump() if hasattr(transcripts, 'model_dump') else (transcripts or {})
             return {
                 "intent": "transcript",
-                "company_name": result.get("company_name"),
-                "transcripts": result.get("transcripts", {})
+                "company_name": company_name,
+                "transcripts": transcripts_dict
             }
         else:
             # User asked for full analysis
+            assessment = result.get("assessment")
+            # Handle both Pydantic model and dict
+            assessment_dict = assessment.model_dump() if hasattr(assessment, 'model_dump') else (assessment or {})
             return {
                 "intent": "analysis",
-                "company_name": result.get("company_name"),
-                "assessment": result.get("assessment", {})
+                "company_name": company_name,
+                "assessment": assessment_dict
             }
             
     except Exception as e:
