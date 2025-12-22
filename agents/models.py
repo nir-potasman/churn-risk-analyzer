@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 
 class CallTranscript(BaseModel):
     date: str = Field(description="Date of the call (YYYY-MM-DD)")
-    time: str = Field(description="Time of the call (HH:MM:SS)")
+    time: str = Field(default="N/A", description="Time of the call (HH:MM:SS) or N/A if not available")
     title: str = Field(description="Title of the call")
     duration: int = Field(description="Duration of the call in seconds")
     company: str = Field(description="Name of the customer company (e.g., Vivo Infusion)")
@@ -43,6 +43,7 @@ class ManagerState(BaseModel):
     user_query: str
     company_name: str = ""
     intent: Literal["transcript", "analysis"] = "analysis"
+    limit: int = 5  # Number of transcripts to retrieve
     transcripts: Optional[CallTranscriptList] = None
     assessment: Optional[ChurnRiskAssessment] = None
 
@@ -56,4 +57,8 @@ class IntentExtraction(BaseModel):
     intent: Literal["transcript", "analysis"] = Field(
         description="Use 'analysis' if user asks for churn risk, analysis, assessment, risk score. "
                     "Use 'transcript' ONLY if user explicitly asks for transcripts, calls, or conversation records."
+    )
+    limit: int = Field(
+        default=0,  # 0 means "use smart default based on intent"
+        description="Number of transcripts requested. Extract from phrases like 'last 3 calls', '5 transcripts', 'latest 2'. Use 0 if not explicitly specified."
     )

@@ -25,8 +25,8 @@ intent_extractor = llm.with_structured_output(IntentExtraction)
 
 
 def extract_intent(state: ManagerState) -> dict:
-    """Parse user query to extract company name and intent."""
-    prompt = f"""Analyze this user query and extract the company name and intent:
+    """Parse user query to extract company name, intent, and limit."""
+    prompt = f"""Analyze this user query and extract the company name, intent, and number of transcripts requested:
 
 Query: "{state.user_query}"
 
@@ -40,10 +40,22 @@ Keywords that indicate "analysis" intent:
 Keywords that indicate "transcript" intent:
 - "transcript", "recording", "call log", "conversation", "what was said"
 
+Limit Extraction:
+- Look for numbers in phrases like "last 3 calls", "latest 5 transcripts", "2 conversations"
+- Return 0 if no specific number is mentioned (we'll apply smart defaults later)
+
 DEFAULT TO "analysis" if the query mentions risk, churn, or analysis in any form."""
     
     result = intent_extractor.invoke(prompt)
-    return {"company_name": result.company_name, "intent": result.intent}
+    
+    # Apply smart defaults based on intent
+    limit = result.limit
+    if limit == 0:
+        # For analysis: 2 recent calls is enough (faster LLM processing)
+        # For transcripts: 5 is a reasonable default
+        limit = 2 if result.intent == "analysis" else 5
+    
+    return {"company_name": result.company_name, "intent": result.intent, "limit": limit}
 
 
 def route_after_retrieve(state: ManagerState) -> Literal["analyze", "format"]:
@@ -57,7 +69,7 @@ def call_retriever(state: ManagerState) -> dict:
     """HTTP call to retriever service."""
     response = httpx.post(
         f"{settings.transcript_agent_url}/retrieve",
-        json={"company_name": state.company_name},
+        json={"company_name": state.company_name, "limit": state.limit},
         timeout=180.0  # 3 minutes for DB queries
     )
     response.raise_for_status()
@@ -68,10 +80,12 @@ def call_retriever(state: ManagerState) -> dict:
 
 def call_analyzer(state: ManagerState) -> dict:
     """HTTP call to analyzer service."""
+    # Use explicit timeout with longer read timeout for LLM analysis
+    timeout = httpx.Timeout(timeout=300.0, read=300.0)  # 5 minutes for LLM analysis
     response = httpx.post(
         f"{settings.churn_agent_url}/analyze",
         json={"transcripts": state.transcripts.model_dump() if state.transcripts else {}},
-        timeout=180.0  # 3 minutes for analysis
+        timeout=timeout
     )
     response.raise_for_status()
     # Parse response into proper Pydantic model

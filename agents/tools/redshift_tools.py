@@ -1,127 +1,257 @@
 """
-Gong Database tools for LangChain agents.
-Uses fast REST API endpoint instead of boto3 Redshift Data API.
+Gong Database tools - Fast direct API access.
+Uses REST API endpoints for quick data retrieval.
 """
 import httpx
 import json
-from langchain_core.tools import tool
+import base64
+import re
+from typing import Optional
 from config import settings
 
-# Build query URL from base URL
+# API endpoints
 GONG_QUERY_URL = f"{settings.gong_api_base_url}/query"
+GONG_TRANSCRIPTS_URL = f"{settings.gong_api_base_url}/transcripts"
+
+# Common headers
+HEADERS = {
+    "X-API-Key": settings.gong_api_key,
+    "Content-Type": "application/json",
+}
+
+# Pre-built SQL templates (no agent reasoning needed)
+SQL_TEMPLATES = {
+    "latest_calls_for_company": """
+        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
+        FROM calls c
+        JOIN call_accounts ca ON c.id = ca.call_id
+        WHERE LOWER(ca.acc_name) LIKE '%{company}%'
+        ORDER BY c.started DESC
+        LIMIT {limit}
+    """,
+    
+    "call_by_id": """
+        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
+        FROM calls c
+        JOIN call_accounts ca ON c.id = ca.call_id
+        WHERE c.id = '{call_id}'
+    """,
+    
+    "calls_by_date_range": """
+        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
+        FROM calls c
+        JOIN call_accounts ca ON c.id = ca.call_id
+        WHERE LOWER(ca.acc_name) LIKE '%{company}%'
+          AND c.started >= '{start_date}'
+          AND c.started <= '{end_date}'
+        ORDER BY c.started DESC
+        LIMIT {limit}
+    """,
+    
+    "participants_for_calls": """
+        SELECT call_id, name, affiliation
+        FROM call_parties
+        WHERE call_id IN ({call_ids})
+        AND name IS NOT NULL AND name != ''
+    """,
+}
 
 
-def _execute_query(sql: str, limit: int = 100) -> str:
-    """Internal function to execute query via Gong API."""
-    try:
-        response = httpx.post(
-            GONG_QUERY_URL,
-            headers={
-                "X-API-Key": settings.gong_api_key,
-                "Content-Type": "application/json",
-            },
-            json={"query": sql, "limit": limit},
-            timeout=30.0
-        )
-        response.raise_for_status()
+def execute_query(sql: str, limit: int = 100) -> list[dict]:
+    """Execute SQL query and return results as list of dicts."""
+    response = httpx.post(
+        GONG_QUERY_URL,
+        headers=HEADERS,
+        json={"query": sql, "limit": limit},
+        timeout=30.0
+    )
+    response.raise_for_status()
+    data = response.json()
+    
+    # Handle different response formats
+    if isinstance(data, list):
+        return data
+    elif isinstance(data, dict):
+        if 'results' in data:
+            return data['results']
+        elif 'data' in data:
+            return data['data']
+        elif 'error' in data:
+            raise ValueError(f"Query error: {data['error']}")
+    return []
+
+
+def fetch_transcripts(call_ids: list[str]) -> list[dict]:
+    """Fetch full transcripts using dedicated /transcripts endpoint.
+    
+    Makes SEPARATE requests for each call_id to avoid complex parsing.
+    This is cleaner and more reliable than parsing combined responses.
+    
+    Args:
+        call_ids: List of call IDs to fetch transcripts for
         
-        data = response.json()
+    Returns:
+        List of transcript data dicts with call_id and transcript text
+    """
+    if not call_ids:
+        return []
+    
+    results = []
+    
+    # Make separate request for each call_id (cleaner than parsing combined response)
+    for call_id in call_ids:
+        try:
+            response = httpx.post(
+                GONG_TRANSCRIPTS_URL,
+                headers=HEADERS,
+                json={"call_ids": [str(call_id)]},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Parse the single transcript from openaiFileResponse
+            if isinstance(data, dict) and 'openaiFileResponse' in data:
+                files = data['openaiFileResponse']
+                if files:
+                    content_b64 = files[0].get('content', '')
+                    content = base64.b64decode(content_b64).decode('utf-8')
+                    results.append({
+                        'call_id': str(call_id),
+                        'transcript': content,
+                    })
+            elif isinstance(data, list) and data:
+                results.append({
+                    'call_id': str(call_id),
+                    'transcript': str(data[0]),
+                })
+                
+        except Exception as e:
+            print(f"Error fetching transcript for call {call_id}: {e}")
+            continue
+    
+    return results
+
+
+def get_calls_for_company(company_name: str, limit: int = 5) -> list[dict]:
+    """Get latest calls for a company using SQL template.
+    
+    Args:
+        company_name: Company name to search for
+        limit: Max number of calls to return
         
-        # Handle different response formats
-        if isinstance(data, list):
-            # Response is a list of records
-            if not data:
-                return "No results found"
+    Returns:
+        List of call metadata dicts
+    """
+    sql = SQL_TEMPLATES["latest_calls_for_company"].format(
+        company=company_name.lower().replace("'", "''"),  # Escape single quotes
+        limit=limit
+    )
+    return execute_query(sql, limit=limit)
+
+
+def get_participants_for_calls(call_ids: list[str]) -> dict[str, dict]:
+    """Get participants for multiple calls, grouped by call_id.
+    
+    Args:
+        call_ids: List of call IDs
+        
+    Returns:
+        Dict mapping call_id to {"stampli": [...], "customer": [...]}
+    """
+    if not call_ids:
+        return {}
+    
+    # Format call IDs for SQL IN clause
+    ids_str = ", ".join(f"'{cid}'" for cid in call_ids)
+    sql = SQL_TEMPLATES["participants_for_calls"].format(call_ids=ids_str)
+    
+    rows = execute_query(sql, limit=500)  # Allow many participants
+    
+    # Group by call_id and affiliation
+    result = {}
+    for row in rows:
+        call_id = str(row.get('call_id', ''))
+        name = row.get('name', '')
+        affiliation = row.get('affiliation', '')
+        
+        if not call_id or not name:
+            continue
             
-            # Get column names from first record
-            columns = list(data[0].keys()) if data else []
-            
-            output = f"Columns: {', '.join(columns)}\n"
-            output += "-" * 50 + "\n"
-            for row in data[:100]:
-                output += f"{list(row.values())}\n"
-            
-            if len(data) > 100:
-                output += f"\n... and {len(data) - 100} more rows (truncated)"
-            
-            return output
-            
-        elif isinstance(data, dict):
-            # Response might be wrapped in a dict with 'results' key
-            if 'results' in data:
-                return _format_results(data['results'])
-            elif 'data' in data:
-                return _format_results(data['data'])
-            elif 'error' in data:
-                return f"Query error: {data['error']}"
-            else:
-                # Return raw dict as formatted JSON
-                return json.dumps(data, indent=2)
+        if call_id not in result:
+            result[call_id] = {"stampli": [], "customer": []}
+        
+        if affiliation == "Internal":
+            result[call_id]["stampli"].append(name)
         else:
-            return f"Unexpected response format: {type(data)}"
-            
-    except httpx.HTTPStatusError as e:
-        return f"HTTP error {e.response.status_code}: {e.response.text}"
-    except httpx.RequestError as e:
-        return f"Request error: {str(e)}"
+            result[call_id]["customer"].append(name)
+    
+    return result
+
+
+def get_transcripts_for_company(company_name: str, limit: int = 5) -> list[dict]:
+    """Three-step fast retrieval: get call IDs, fetch participants, fetch transcripts.
+    
+    This is the FAST path - no agent reasoning needed.
+    
+    Args:
+        company_name: Company name to search for
+        limit: Max number of calls
+        
+    Returns:
+        List of transcript dicts with call metadata and participants
+    """
+    # Step 1: Get call metadata
+    calls = get_calls_for_company(company_name, limit=limit)
+    if not calls:
+        return []
+    
+    call_ids = [str(call.get('id')) for call in calls if call.get('id')]
+    
+    # Step 2: Get participants for all calls (single query)
+    participants = get_participants_for_calls(call_ids)
+    
+    # Step 3: Fetch transcripts using dedicated endpoint
+    transcripts = fetch_transcripts(call_ids)
+    
+    # Merge call metadata with transcripts and participants
+    calls_by_id = {str(c.get('id')): c for c in calls}
+    
+    result = []
+    for t in transcripts:
+        call_id = str(t.get('call_id', ''))
+        call_meta = calls_by_id.get(call_id, {})
+        call_participants = participants.get(call_id, {"stampli": [], "customer": []})
+        
+        result.append({
+            **call_meta,
+            'transcript': t.get('transcript', t.get('text', '')),
+            'call_id': call_id,
+            'stampli_contacts': call_participants["stampli"],
+            'customer_contacts': call_participants["customer"],
+        })
+    
+    return result
+
+
+# Legacy tool wrapper (for backward compatibility with agent if needed)
+def _execute_query_formatted(sql: str, limit: int = 100) -> str:
+    """Execute query and return formatted string (legacy format)."""
+    try:
+        data = execute_query(sql, limit)
+        if not data:
+            return "No results found"
+        
+        columns = list(data[0].keys()) if data else []
+        output = f"Columns: {', '.join(columns)}\n"
+        output += "-" * 50 + "\n"
+        for row in data[:100]:
+            output += f"{list(row.values())}\n"
+        
+        if len(data) > 100:
+            output += f"\n... and {len(data) - 100} more rows (truncated)"
+        
+        return output
+        
     except Exception as e:
         return f"Error executing query: {str(e)}"
-
-
-def _format_results(results: list) -> str:
-    """Format a list of result records."""
-    if not results:
-        return "No results found"
-    
-    columns = list(results[0].keys()) if results else []
-    
-    output = f"Columns: {', '.join(columns)}\n"
-    output += "-" * 50 + "\n"
-    for row in results[:100]:
-        output += f"{list(row.values())}\n"
-    
-    if len(results) > 100:
-        output += f"\n... and {len(results) - 100} more rows (truncated)"
-    
-    return output
-
-
-@tool
-def list_tables(schema: str = "gong") -> str:
-    """List all tables in a database schema.
-    
-    Args:
-        schema: The schema name to list tables from (default: 'gong')
-    
-    Returns:
-        List of table names in the schema
-    """
-    sql = f"""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = '{schema}'
-        ORDER BY table_name
-    """
-    return _execute_query(sql)
-
-
-@tool
-def execute_redshift_query(sql: str) -> str:
-    """Execute a SQL query on the Gong database.
-    
-    Use this tool to query call transcripts, call metadata, and account information.
-    Key tables:
-    - gong.calls: Call metadata (id, title, started, duration, url)
-    - gong.call_transcripts: Transcript segments (call_id, speaker_id, text, start_time)
-    - gong.call_accounts: Company associations (call_id, acc_name)
-    - gong.call_parties: Call participants (call_id, name, emailaddress)
-    
-    IMPORTANT: Always use LIMIT clause. Never join call_transcripts without filtering by call_id first.
-    
-    Args:
-        sql: The SQL query to execute
-    
-    Returns:
-        Query results as formatted string
-    """
-    return _execute_query(sql)

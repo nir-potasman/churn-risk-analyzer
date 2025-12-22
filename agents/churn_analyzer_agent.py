@@ -12,7 +12,7 @@ from config import settings
 llm = ChatBedrockConverse(
     model=settings.smart_model_id,
     region_name=settings.aws_region,
-    temperature=0,
+    temperature=0.2,
     max_tokens=4096
 )
 

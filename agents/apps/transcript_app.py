@@ -1,6 +1,6 @@
 """
 Transcript Retriever Service - FastAPI Application.
-Exposes the retriever agent via REST endpoints.
+Fast direct retrieval using SQL templates and /transcripts endpoint.
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -12,56 +12,44 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Transcript Retriever Service",
-    description="Retrieves call transcripts from Gong database in Redshift",
-    version="2.0.0"
+    description="Fast transcript retrieval from Gong database",
+    version="3.0.0"
 )
 
 
 class RetrieveRequest(BaseModel):
     """Request model for transcript retrieval."""
     company_name: str
+    limit: int = 5
 
 
 @app.post("/retrieve")
-async def retrieve_transcripts(request: RetrieveRequest):
-    """Retrieve call transcripts for a company from Redshift.
+async def retrieve_transcripts_endpoint(request: RetrieveRequest):
+    """Retrieve call transcripts for a company - FAST direct retrieval.
+    
+    Uses pre-built SQL templates and /transcripts endpoint instead of
+    LLM agent reasoning. Much faster (~2-3s vs ~15-30s).
     
     Args:
-        request: Contains the company_name to search for
+        request: Contains company_name and optional limit
         
     Returns:
         CallTranscriptList as JSON
     """
-    # Import here to avoid circular imports and ensure proper initialization
-    from agents.call_transcripts_agent import retriever_agent
+    # Import here to avoid circular imports
+    from agents.call_transcripts_agent import retrieve_transcripts
     
     try:
         logger.info(f"Retrieving transcripts for company: {request.company_name}")
         
-        # create_react_agent is invoked with messages
-        result = retriever_agent.invoke({
-            "messages": [
-                {"role": "user", "content": f"Retrieve call transcripts for {request.company_name}"}
-            ]
-        })
+        # Direct function call - no LLM reasoning needed!
+        result = retrieve_transcripts(
+            company_name=request.company_name,
+            limit=request.limit
+        )
         
-        # Per LangGraph docs: structured output is in "structured_response" key
-        if "structured_response" in result and result["structured_response"]:
-            logger.info(f"Successfully retrieved transcripts for {request.company_name}")
-            return result["structured_response"].model_dump()
-        else:
-            # Fallback: try to extract from messages
-            logger.warning("No structured_response found, checking messages")
-            messages = result.get("messages", [])
-            if messages:
-                last_message = messages[-1]
-                if hasattr(last_message, "content"):
-                    return {"transcripts": [], "raw_response": str(last_message.content)}
-            
-            raise HTTPException(
-                status_code=500, 
-                detail="No structured response received from agent"
-            )
+        logger.info(f"Successfully retrieved {len(result.transcripts)} transcripts for {request.company_name}")
+        return result.model_dump()
             
     except Exception as e:
         logger.exception(f"Error retrieving transcripts: {e}")
