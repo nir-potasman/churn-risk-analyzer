@@ -2,41 +2,22 @@
 Manager Agent - LangGraph Implementation.
 Orchestrates the churn risk analysis workflow with conditional routing.
 """
-from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from typing import Literal
 from langchain_aws import ChatBedrockConverse
 from langgraph.graph import StateGraph, START, END
 import httpx
 from config import settings
-from agents.models import CallTranscriptList, ChurnRiskAssessment
+from agents.models import (
+    CallTranscriptList, 
+    ChurnRiskAssessment, 
+    ManagerState, 
+    IntentExtraction
+)
 
 
-# State model using Pydantic with proper type annotations
-class ManagerState(BaseModel):
-    """State for Manager Agent StateGraph."""
-    user_query: str
-    company_name: str = ""
-    intent: Literal["transcript", "analysis"] = "analysis"
-    transcripts: Optional[CallTranscriptList] = None
-    assessment: Optional[ChurnRiskAssessment] = None
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-# Intent extraction using structured output
-class IntentExtraction(BaseModel):
-    """Structured output for intent extraction from user query."""
-    company_name: str = Field(description="The company name to analyze")
-    intent: Literal["transcript", "analysis"] = Field(
-        description="Use 'analysis' if user asks for churn risk, analysis, assessment, risk score. Use 'transcript' ONLY if user explicitly asks for transcripts, calls, or conversation records."
-    )
-
-
-# Initialize LLM for intent extraction
-# Using Claude 4.5 Sonnet (smart model) for intent extraction
+# Initialize LLM for intent extraction (uses smart model from settings)
 llm = ChatBedrockConverse(
-    model="eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    model=settings.smart_model_id,
     region_name=settings.aws_region,
     temperature=0
 )

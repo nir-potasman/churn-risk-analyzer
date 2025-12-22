@@ -9,10 +9,9 @@ from agents.prompts import CALL_TRANSCRIPTS_AGENT_INSTRUCTION
 from agents.tools.redshift_tools import execute_redshift_query, list_tables
 from config import settings
 
-# Initialize LLM (ChatBedrockConverse for Bedrock API)
-# Using Claude 4.5 Haiku (fast model) for data retrieval
+# Initialize LLM (uses fast model from settings for data retrieval)
 llm = ChatBedrockConverse(
-    model="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    model=settings.fast_model_id,
     region_name=settings.aws_region,
     temperature=0,
     max_tokens=4096

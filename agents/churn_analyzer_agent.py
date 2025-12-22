@@ -8,10 +8,9 @@ from agents.models import ChurnRiskAssessment
 from agents.prompts import CHURN_ANALYZER_INSTRUCTION
 from config import settings
 
-# Initialize LLM with structured output
-# Using Claude 4.5 Sonnet (smart model) for analysis
+# Initialize LLM with structured output (uses smart model from settings)
 llm = ChatBedrockConverse(
-    model="eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    model=settings.smart_model_id,
     region_name=settings.aws_region,
     temperature=0,
     max_tokens=4096

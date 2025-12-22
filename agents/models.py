@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Literal, Optional
 
 class CallTranscript(BaseModel):
     date: str = Field(description="Date of the call (YYYY-MM-DD)")
@@ -34,3 +34,26 @@ class ChurnRiskAssessment(BaseModel):
     red_flags: List[str] = Field(description="List of critical red flags")
     signals: List[RiskSignal] = Field(description="Detailed breakdown of risk signals")
     recommendations: List[NextStepRecommendation] = Field(description="List of actionable next steps")
+
+
+# ==================== Manager Agent Models ====================
+
+class ManagerState(BaseModel):
+    """State for Manager Agent StateGraph."""
+    user_query: str
+    company_name: str = ""
+    intent: Literal["transcript", "analysis"] = "analysis"
+    transcripts: Optional[CallTranscriptList] = None
+    assessment: Optional[ChurnRiskAssessment] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class IntentExtraction(BaseModel):
+    """Structured output for intent extraction from user query."""
+    company_name: str = Field(description="The company name to analyze")
+    intent: Literal["transcript", "analysis"] = Field(
+        description="Use 'analysis' if user asks for churn risk, analysis, assessment, risk score. "
+                    "Use 'transcript' ONLY if user explicitly asks for transcripts, calls, or conversation records."
+    )
