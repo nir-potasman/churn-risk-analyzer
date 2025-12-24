@@ -3,26 +3,35 @@ Call Transcripts Retrieval - Fast Direct Access.
 No LLM reasoning - uses pre-built SQL templates and /transcripts endpoint.
 """
 from agents.models import CallTranscript, CallTranscriptList
-from agents.tools.redshift_tools import get_transcripts_for_company
+from agents.tools.redshift_tools import get_transcripts_for_company, get_transcript_by_call_id
 
 
-def retrieve_transcripts(company_name: str, limit: int = 5) -> CallTranscriptList:
+def retrieve_transcripts(
+    company_name: str = "",
+    call_id: str = "",
+    limit: int = 5
+) -> CallTranscriptList:
     """Fast transcript retrieval using direct API calls.
     
-    This replaces the slow ReAct agent with direct function calls:
-    1. Query call metadata using SQL template
-    2. Fetch transcripts using /transcripts endpoint
-    3. Format as Pydantic model
+    Supports two lookup modes:
+    1. By call_id (direct lookup, takes precedence)
+    2. By company_name (searches for latest calls)
     
     Args:
         company_name: Company name to search for
+        call_id: Specific call ID to retrieve (takes precedence over company_name)
         limit: Maximum number of transcripts to return
         
     Returns:
         CallTranscriptList with formatted transcripts
     """
-    # Fast two-step retrieval
-    raw_transcripts = get_transcripts_for_company(company_name, limit=limit)
+    # Choose retrieval method based on input
+    if call_id:
+        # Direct lookup by call_id
+        raw_transcripts = get_transcript_by_call_id(call_id)
+    else:
+        # Search by company name
+        raw_transcripts = get_transcripts_for_company(company_name, limit=limit)
     
     if not raw_transcripts:
         return CallTranscriptList(transcripts=[])
@@ -55,6 +64,7 @@ def retrieve_transcripts(company_name: str, limit: int = 5) -> CallTranscriptLis
                 company=t.get('acc_name', company_name),
                 stampli_contact=stampli_contact,
                 company_contact=company_contact,
+                department=t.get('department', 'Unknown'),
                 gong_url=t.get('url', ''),
                 transcript=t.get('transcript', 'No transcript available')
             )

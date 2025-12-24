@@ -60,12 +60,33 @@ async def handle_query(request: AnalyzeRequest):
         else:
             # User asked for full analysis
             assessment = result.get("assessment")
+            transcripts = result.get("transcripts")
             # Handle both Pydantic model and dict
             assessment_dict = assessment.model_dump() if hasattr(assessment, 'model_dump') else (assessment or {})
+            
+            # Extract transcript metadata for context (contacts, gong_url, etc.)
+            transcript_metadata = {}
+            if transcripts:
+                transcripts_data = transcripts.model_dump() if hasattr(transcripts, 'model_dump') else transcripts
+                if transcripts_data and transcripts_data.get("transcripts"):
+                    first_transcript = transcripts_data["transcripts"][0]
+                    transcript_metadata = {
+                        "date": first_transcript.get("date", ""),
+                        "time": first_transcript.get("time", ""),
+                        "title": first_transcript.get("title", ""),
+                        "company": first_transcript.get("company", ""),
+                        "stampli_contact": first_transcript.get("stampli_contact", ""),
+                        "company_contact": first_transcript.get("company_contact", ""),
+                        "department": first_transcript.get("department", "Unknown"),
+                        "gong_url": first_transcript.get("gong_url", ""),
+                        "duration": first_transcript.get("duration", 0),
+                    }
+            
             return {
                 "intent": "analysis",
                 "company_name": company_name,
-                "assessment": assessment_dict
+                "assessment": assessment_dict,
+                "transcript_metadata": transcript_metadata
             }
             
     except Exception as e:

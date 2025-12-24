@@ -1,0 +1,318 @@
+{
+  "name": "Daily Churn Analysis v2 - No Timeout",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1400, 300],
+      "id": "trigger-manual",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1400, 500],
+      "id": "trigger-schedule",
+      "name": "Daily 8AM Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gong-database.stampli.cloud/gong-database/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "6d17f7d92a50e14eedd2b2660b905b869f09e4c097b377cd64c39668fccc1d02"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"SELECT c.id as call_id, c.title, c.started FROM calls c WHERE c.started::date = CURRENT_DATE - 1 AND c.id IN (SELECT DISTINCT cp.call_id FROM call_parties cp WHERE cp.affiliation = 'Internal' AND (cp.title ILIKE '%Customer Success%' OR cp.title ILIKE '%CSM%' OR cp.title IS NULL OR cp.title = '')) ORDER BY c.started DESC\",\n  \"limit\": 500\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-1100, 400],
+      "id": "get-calls",
+      "name": "Get Yesterday's CS Calls"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [-850, 400],
+      "id": "split-calls",
+      "name": "Split Call Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAST DEDUPLICATION ONLY - No HTTP calls\nconst items = $input.all();\nconst seen = new Set();\nconst unique = [];\n\nfor (const item of items) {\n  const id = String(item.json.call_id || '');\n  if (id && !seen.has(id)) {\n    seen.add(id);\n    unique.push(item);\n  }\n}\n\nconsole.log('Deduplicated: ' + items.length + ' -> ' + unique.length);\nreturn unique;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 400],
+      "id": "deduplicate",
+      "name": "Deduplicate Call IDs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://manager-service:8080/query",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"user_query\": \"analyze call {{ $json.call_id }}\" }",
+        "options": {
+          "timeout": 600000,
+          "batching": {
+            "batch": {
+              "batchSize": 8,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-350, 400],
+      "id": "analyze-call",
+      "name": "Analyze Call",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// AGGREGATE RESULTS\nconst items = $input.all();\n\nconst highRiskItems = [];\nconst lowRiskItems = [];\nlet errorCount = 0;\n\nfor (const item of items) {\n  const data = item.json;\n  if (!data || !data.assessment) {\n    errorCount++;\n    continue;\n  }\n  \n  const riskLevel = (data.assessment.risk_level || '').toUpperCase();\n  if (riskLevel === 'HIGH' || riskLevel === 'CRITICAL') {\n    highRiskItems.push(data);\n  } else {\n    lowRiskItems.push(data);\n  }\n}\n\nreturn [{\n  json: {\n    hasHighRisk: highRiskItems.length > 0,\n    highRiskCount: highRiskItems.length,\n    lowRiskCount: lowRiskItems.length,\n    totalCount: highRiskItems.length + lowRiskItems.length,\n    errorCount: errorCount,\n    highRiskItems: highRiskItems,\n    lowRiskItems: lowRiskItems\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-100, 400],
+      "id": "aggregate-results",
+      "name": "Aggregate Results"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "high-risk-check",
+              "leftValue": "={{ $json.hasHighRisk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [150, 400],
+      "id": "if-high-risk",
+      "name": "Has High Risk?"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "highRiskItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "id": "split-high-risk",
+      "name": "Split High Risk Items"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#churn_analysis_channel",
+          "mode": "name"
+        },
+        "text": "=🚨 *HIGH RISK Churn Alert*\n\n*Company:* {{ $json.transcript_metadata?.company || 'Unknown' }}\n*Date:* {{ $json.transcript_metadata?.date || 'N/A' }}\n*Call Title:* {{ $json.transcript_metadata?.title || 'Untitled' }}\n*Stampli Contact:* {{ $json.transcript_metadata?.stampli_contact || 'Unknown' }}\n*Department:* {{ $json.transcript_metadata?.department || 'Unknown' }}\n*Company Contact:* {{ $json.transcript_metadata?.company_contact || 'Unknown' }}\n*Gong URL:* {{ $json.transcript_metadata?.gong_url || 'N/A' }}\n\n━━━━━━━━━━━━━━━━━━━━\n*Churn Score:* {{ $json.assessment?.churn_score || 0 }}/100\n*Risk Level:* {{ $json.assessment?.risk_level || 'Unknown' }}\n━━━━━━━━━━━━━━━━━━━━\n\n*Summary:*\n{{ $json.assessment?.summary || 'No summary available' }}\n\n*Sentiment Analysis:*\n{{ $json.assessment?.sentiment_analysis || 'No sentiment analysis available' }}\n\n*🚩 Red Flags:*\n• {{ ($json.assessment?.red_flags || []).join('\\n• ') || 'None identified' }}\n\n*📋 Recommendations:*\n{{ ($json.assessment?.recommendations || []).map(r => '• ' + (r.action || 'Action') + ' [' + (r.urgency || 'Medium') + ']').join('\\n') || '• No recommendations' }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [650, 300],
+      "id": "slack-high-risk",
+      "name": "Send High Risk Alert",
+      "credentials": {
+        "slackApi": {
+          "id": "gFzVLGrxm0VTp1Al",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#churn_analysis_channel",
+          "mode": "name"
+        },
+        "text": "=✅ *Daily Churn Analysis Report*\n\n📊 *Summary:*\n• Total calls analyzed: {{ $json.totalCount }}\n• High/Critical risk: {{ $json.highRiskCount }}\n• Low/Medium risk: {{ $json.lowRiskCount }}\n• Errors: {{ $json.errorCount }}\n\n🎉 No high-risk churn signals detected in yesterday's CS calls.\n\n_Report generated automatically_",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [400, 500],
+      "id": "slack-no-risk",
+      "name": "Send No Risk Summary",
+      "credentials": {
+        "slackApi": {
+          "id": "gFzVLGrxm0VTp1Al",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Yesterday's CS Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 8AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Yesterday's CS Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Yesterday's CS Calls": {
+      "main": [
+        [
+          {
+            "node": "Split Call Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Call Data": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Call IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Call IDs": {
+      "main": [
+        [
+          {
+            "node": "Analyze Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Call": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Has High Risk?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has High Risk?": {
+      "main": [
+        [
+          {
+            "node": "Split High Risk Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send No Risk Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split High Risk Items": {
+      "main": [
+        [
+          {
+            "node": "Send High Risk Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
+

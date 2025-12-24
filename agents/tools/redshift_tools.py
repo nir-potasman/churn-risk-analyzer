@@ -27,8 +27,15 @@ SQL_TEMPLATES = {
         LIMIT {limit}
     """,
     
+    "call_by_id": """
+        SELECT c.id, c.url, c.title, c.started, c.duration, ca.acc_name
+        FROM calls c
+        LEFT JOIN call_accounts ca ON c.id = ca.call_id
+        WHERE c.id = '{call_id}'
+    """,
+    
     "participants_for_calls": """
-        SELECT call_id, name, affiliation
+        SELECT call_id, name, affiliation, title
         FROM call_parties
         WHERE call_id IN ({call_ids})
         AND name IS NOT NULL AND name != ''
@@ -129,6 +136,58 @@ def get_calls_for_company(company_name: str, limit: int = 5) -> list[dict]:
     return execute_query(sql, limit=limit)
 
 
+def get_call_by_id(call_id: str) -> list[dict]:
+    """Get call metadata by specific call ID.
+    
+    Args:
+        call_id: The call ID to look up
+        
+    Returns:
+        List with single call metadata dict (or empty if not found)
+    """
+    sql = SQL_TEMPLATES["call_by_id"].format(
+        call_id=call_id.replace("'", "''")  # Escape single quotes
+    )
+    return execute_query(sql, limit=1)
+
+
+def _infer_department(title: str) -> str:
+    """Infer department from Stampli rep's job title.
+    
+    Args:
+        title: Job title from call_parties table
+        
+    Returns:
+        Department name: CS, SDR, Sales, Support, or Unknown
+    """
+    if not title:
+        return "Unknown"
+    
+    title_lower = title.lower()
+    
+    # Customer Success
+    if any(kw in title_lower for kw in ['customer success', 'csm', 'cs manager']):
+        return "CS"
+    
+    # SDR (Sales Development)
+    if any(kw in title_lower for kw in ['sdr', 'sales development']):
+        return "SDR"
+    
+    # Support
+    if any(kw in title_lower for kw in ['support', 'specialist']):
+        return "Support"
+    
+    # Sales (AE, Account Executive, Sales Manager, etc.)
+    if any(kw in title_lower for kw in ['ae', 'account executive', 'sales', 'director of sales']):
+        return "Sales"
+    
+    # Practice/Implementation
+    if any(kw in title_lower for kw in ['practice', 'implementation', 'psm']):
+        return "Practice"
+    
+    return "Unknown"
+
+
 def get_participants_for_calls(call_ids: list[str]) -> dict[str, dict]:
     """Get participants for multiple calls, grouped by call_id.
     
@@ -136,7 +195,7 @@ def get_participants_for_calls(call_ids: list[str]) -> dict[str, dict]:
         call_ids: List of call IDs
         
     Returns:
-        Dict mapping call_id to {"stampli": [...], "customer": [...]}
+        Dict mapping call_id to {"stampli": [...], "customer": [...], "department": str}
     """
     if not call_ids:
         return {}
@@ -153,15 +212,19 @@ def get_participants_for_calls(call_ids: list[str]) -> dict[str, dict]:
         call_id = str(row.get('call_id', ''))
         name = row.get('name', '')
         affiliation = row.get('affiliation', '')
+        title = row.get('title', '')
         
         if not call_id or not name:
             continue
             
         if call_id not in result:
-            result[call_id] = {"stampli": [], "customer": []}
+            result[call_id] = {"stampli": [], "customer": [], "department": "Unknown"}
         
         if affiliation == "Internal":
             result[call_id]["stampli"].append(name)
+            # Infer department from first internal participant's title
+            if result[call_id]["department"] == "Unknown" and title:
+                result[call_id]["department"] = _infer_department(title)
         else:
             result[call_id]["customer"].append(name)
     
@@ -200,7 +263,7 @@ def get_transcripts_for_company(company_name: str, limit: int = 5) -> list[dict]
     for t in transcripts:
         call_id = str(t.get('call_id', ''))
         call_meta = calls_by_id.get(call_id, {})
-        call_participants = participants.get(call_id, {"stampli": [], "customer": []})
+        call_participants = participants.get(call_id, {"stampli": [], "customer": [], "department": "Unknown"})
         
         result.append({
             **call_meta,
@@ -208,6 +271,49 @@ def get_transcripts_for_company(company_name: str, limit: int = 5) -> list[dict]
             'call_id': call_id,
             'stampli_contacts': call_participants["stampli"],
             'customer_contacts': call_participants["customer"],
+            'department': call_participants["department"],
         })
     
     return result
+
+
+def get_transcript_by_call_id(call_id: str) -> list[dict]:
+    """Get transcript for a specific call ID.
+    
+    Direct lookup by call_id - faster than company name search.
+    
+    Args:
+        call_id: The call ID to retrieve
+        
+    Returns:
+        List with single transcript dict (or empty if not found)
+    """
+    # Step 1: Get call metadata by ID
+    calls = get_call_by_id(call_id)
+    if not calls:
+        return []
+    
+    call_ids = [call_id]
+    
+    # Step 2: Get participants
+    participants = get_participants_for_calls(call_ids)
+    
+    # Step 3: Fetch transcript
+    transcripts = fetch_transcripts(call_ids)
+    
+    if not transcripts:
+        return []
+    
+    # Merge call metadata with transcript and participants
+    call_meta = calls[0]
+    call_participants = participants.get(call_id, {"stampli": [], "customer": [], "department": "Unknown"})
+    t = transcripts[0]
+    
+    return [{
+        **call_meta,
+        'transcript': t.get('transcript', t.get('text', '')),
+        'call_id': call_id,
+        'stampli_contacts': call_participants["stampli"],
+        'customer_contacts': call_participants["customer"],
+        'department': call_participants["department"],
+    }]

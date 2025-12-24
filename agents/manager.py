@@ -25,26 +25,36 @@ intent_extractor = llm.with_structured_output(IntentExtraction)
 
 
 def extract_intent(state: ManagerState) -> dict:
-    """Parse user query to extract company name, intent, and limit."""
-    prompt = f"""Analyze this user query and extract the company name, intent, and number of transcripts requested:
+    """Parse user query to extract company name, call_id, intent, and limit."""
+    prompt = f"""Analyze this user query and extract the relevant information:
 
 Query: "{state.user_query}"
 
-Intent Classification Rules:
-- "analysis" = user wants churn risk ANALYSIS, risk assessment, churn score, or any analytical insight
-- "transcript" = user ONLY wants raw call transcripts/recordings, NOT analysis
+Extraction Rules:
 
-Keywords that indicate "analysis" intent:
-- "churn", "risk", "analysis", "analyze", "assessment", "score", "evaluate", "health"
+1. CALL_ID (takes precedence over company_name):
+   - If user mentions a specific call ID (long number like 5723497959273374432), extract it
+   - Examples: "analyze call 5723497959273374432", "get transcript for call ID 123456789"
+   - If call_id is found, leave company_name empty
 
-Keywords that indicate "transcript" intent:
-- "transcript", "recording", "call log", "conversation", "what was said"
+2. COMPANY_NAME:
+   - Extract company name if no call_id is provided
+   - Examples: "analyze Vivo Infusion", "churn risk for Alpha Energy"
 
-Limit Extraction:
-- Look for numbers in phrases like "last 3 calls", "latest 5 transcripts", "2 conversations"
-- Return 0 if no specific number is mentioned (we'll apply smart defaults later)
+3. INTENT:
+   - "analysis" = user wants churn risk ANALYSIS, risk assessment, churn score
+   - "transcript" = user ONLY wants raw call transcripts/recordings, NOT analysis
+   - DEFAULT TO "analysis" if query mentions risk, churn, or analysis
 
-DEFAULT TO "analysis" if the query mentions risk, churn, or analysis in any form."""
+4. LIMIT:
+   - Extract from phrases like "last 3 calls", "latest 5 transcripts"
+   - Return 0 if not explicitly specified
+
+Examples:
+- "analyze call 5723497959273374432" → call_id: "5723497959273374432", intent: "analysis"
+- "get transcript for call ID 123456789" → call_id: "123456789", intent: "transcript"  
+- "churn analysis for Vivo Infusion" → company_name: "Vivo Infusion", intent: "analysis"
+- "show me the last 3 calls with Alpha Energy" → company_name: "Alpha Energy", intent: "transcript", limit: 3"""
     
     result = intent_extractor.invoke(prompt)
     
@@ -53,9 +63,18 @@ DEFAULT TO "analysis" if the query mentions risk, churn, or analysis in any form
     if limit == 0:
         # For analysis: 2 recent calls is enough (faster LLM processing)
         # For transcripts: 5 is a reasonable default
-        limit = 2 if result.intent == "analysis" else 5
+        # For call_id lookup: always 1
+        if result.call_id:
+            limit = 1
+        else:
+            limit = 2 if result.intent == "analysis" else 5
     
-    return {"company_name": result.company_name, "intent": result.intent, "limit": limit}
+    return {
+        "company_name": result.company_name,
+        "call_id": result.call_id,
+        "intent": result.intent,
+        "limit": limit
+    }
 
 
 def route_after_retrieve(state: ManagerState) -> Literal["analyze", "format"]:
@@ -67,9 +86,16 @@ def route_after_retrieve(state: ManagerState) -> Literal["analyze", "format"]:
 
 def call_retriever(state: ManagerState) -> dict:
     """HTTP call to retriever service."""
+    # Build request payload - include call_id if provided
+    payload: dict[str, str | int] = {"limit": state.limit}
+    if state.call_id:
+        payload["call_id"] = state.call_id
+    else:
+        payload["company_name"] = state.company_name
+    
     response = httpx.post(
         f"{settings.transcript_agent_url}/retrieve",
-        json={"company_name": state.company_name, "limit": state.limit},
+        json=payload,
         timeout=180.0  # 3 minutes for DB queries
     )
     response.raise_for_status()

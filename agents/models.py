@@ -9,6 +9,7 @@ class CallTranscript(BaseModel):
     company: str = Field(description="Name of the customer company (e.g., Vivo Infusion)")
     stampli_contact: str = Field(description="Name of the Stampli representative/host. If unknown, use 'Stampli Rep'.")
     company_contact: str = Field(description="Name(s) of the company representative(s). If unknown, use 'Unknown'.")
+    department: str = Field(default="Unknown", description="Stampli department: CS, SDR, Sales, Support, or Unknown")
     gong_url: str = Field(description="URL to the Gong call")
     transcript: str = Field(description="The full transcript text, combined chronologically. Do NOT include timestamps for every sentence, just the text.")
 
@@ -42,6 +43,7 @@ class ManagerState(BaseModel):
     """State for Manager Agent StateGraph."""
     user_query: str
     company_name: str = ""
+    call_id: str = ""  # Direct call ID lookup (takes precedence over company_name)
     intent: Literal["transcript", "analysis"] = "analysis"
     limit: int = 5  # Number of transcripts to retrieve
     transcripts: Optional[CallTranscriptList] = None
@@ -53,7 +55,14 @@ class ManagerState(BaseModel):
 
 class IntentExtraction(BaseModel):
     """Structured output for intent extraction from user query."""
-    company_name: str = Field(description="The company name to analyze")
+    company_name: str = Field(
+        default="",
+        description="The company name to analyze. Leave empty if call_id is provided."
+    )
+    call_id: str = Field(
+        default="",
+        description="Call ID if user provides one (e.g., '5723497959273374432'). Takes precedence over company_name."
+    )
     intent: Literal["transcript", "analysis"] = Field(
         description="Use 'analysis' if user asks for churn risk, analysis, assessment, risk score. "
                     "Use 'transcript' ONLY if user explicitly asks for transcripts, calls, or conversation records."
